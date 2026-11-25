@@ -1,0 +1,42 @@
+# Secrets / local credentials
+*.pem
+*.key
+.env
+.env.*
+config.json
+server.properties
+banned-*.json
+ops.json
+whitelist.json
+
+# Private server backups (never publish)
+output/server-backups/
+*.tar.gz
+*.tgz
+*.tar
+
+# Bulk binaries: mods and modpacks are fetched from Modrinth, not vendored
+output/bingo-build/mods/
+*.jar
+*.zip
+
+# Build / runtime state
+__pycache__/
+*.py[cod]
+*.class
+build/
+target/
+logs/
+world/
+world_nether/
+world_the_end/
+
+# Local agent / IDE state
+.workbuddy/
+.workbuddy-ai/
+.idea/
+.vscode/
+*.iml
+
+# Publish staging
+output/github-publish/

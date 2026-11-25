@@ -1,0 +1,11 @@
+kits:
+  starter:
+    delay: -1
+    items:
+      - writtenbook 1 title:浮岛物语手册 author:浮岛引路人 book:Handbook
+      - stonesword 1
+      - stonepickaxe 1
+      - stoneaxe 1
+      - stoneshovel 1
+      - bread 8
+      - oak_sapling 4

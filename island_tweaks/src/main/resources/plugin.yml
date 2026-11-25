@@ -1,0 +1,33 @@
+name: IslandTweaks
+version: 1.0.0
+main: workbuddy.islands.IslandTweaks
+api-version: '1.21'
+description: 浮岛物语：公共修复、云币与私人岛联动
+depend: [BentoBox, Vault, Essentials]
+commands:
+  hub:
+    description: 公共母岛建设与贡献
+    aliases: [contribute, gongxian]
+    usage: /hub <progress|contribute|shop>
+  cloudshop:
+    description: 官方云币补给商店
+    aliases: [cshop]
+permissions:
+  islandtweaks.admin:
+    default: op
+  quickshop.create.sell:
+    default: true
+  quickshop.create.buy:
+    default: true
+  quickshop.create.changeamount:
+    default: true
+  quickshop.create.changeprice:
+    default: true
+  quickshop.create.double:
+    default: true
+  quickshop.create.cmd:
+    default: true
+  quickshop.toggledisplay:
+    default: true
+  quickshop.shopnaming:
+    default: true

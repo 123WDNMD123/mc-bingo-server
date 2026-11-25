@@ -1,0 +1,8 @@
+spawns:
+  default:
+    world: bskyblock_world
+    x: 0.5
+    y: 120.0
+    z: 5.5
+    yaw: 0.0
+    pitch: 10.0
