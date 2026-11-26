@@ -68,6 +68,33 @@ export MC_SSH_PASSWORD='你的密码'
 阿里云凭据从 `~/.workbench/config.json` 读取，不写入代码。
 RCON 密码由部署脚本随机生成并写入 `server.properties`（权限 600，不打印）。
 
+### 给自己开服主权限（离线服有个静默失效的坑）
+
+**顺序不能颠倒**：
+
+1. 先用你的昵称**离线登录一次**，让它进入 `usercache.json`
+2. 再执行 `op <你的昵称>`
+
+如果名字从未登录过，`op` 会去查 **Mojang 正版档案**。万一你的昵称恰好是真实存在的正版账号名，
+服务端就会写入那个正版 UUID（还可能把名字小写化），**和你离线登录的 UUID 完全不同 —— OP 不生效，而且不报错**。
+
+离线 UUID 的正确算法是 `UUID.nameUUIDFromBytes("OfflinePlayer:" + name)`，即**纯 MD5**（置 version=3 / variant）：
+
+```python
+import hashlib, uuid
+def offline_uuid(name):
+    b = bytearray(hashlib.md5(("OfflinePlayer:" + name).encode()).digest())
+    b[6] = (b[6] & 0x0F) | 0x30
+    b[8] = (b[8] & 0x3F) | 0x80
+    return uuid.UUID(bytes=bytes(b))
+```
+
+**不是** `uuid.uuid3(uuid.NAMESPACE_DNS, ...)` —— 那会拼上 DNS namespace，算出完全不同的值。**大小写敏感。**
+
+验证权限是否真的生效，别只看 `ops.json`。服务端会在 play 阶段下发 Entity Event
+（包 `0x22`，5 字节载荷 = int entityId + byte eventId），**eventId = 24 + 权限等级**。
+用 `output/bingo-build/op_level_probe.py <OP名> <非OP名>` 做对照，OP 应收到 28（等级 4），非 OP 收到 24（等级 0）。
+
 ## 踩过的坑（值得抄走的部分）
 
 | 坑 | 现象 | 解法 |
@@ -79,6 +106,8 @@ RCON 密码由部署脚本随机生成并写入 `server.properties`（权限 600
 | **JDK 25 启动告警** | `-XX:+ZGenerational` 被忽略 | 该参数在 **JDK 24+ 已移除**，删掉即可 |
 | **servers.dat 读不出** | 服务器列表为空 | NBT 根标签必须是 **TAG_Compound(10)**，不是 TAG_String |
 | **语音按键不生效** | 配置写了没反应 | 实际 ID 是 **`key.push_to_talk`**，不带 `voicechat.` 前缀 |
+| **离线服 OP 不生效** | `ops.json` 写了却不认，且无报错 | `op` 对未登录过的名字会查正版档案。必须**先离线登录一次再 op**；离线 UUID 是纯 MD5，非 `uuid3(DNS,…)` |
+| **找不到玩家存档** | `world/playerdata/` 不存在 | 26.3 改到了 **`world/players/data/`** |
 
 ## 验收边界（如实说明）
 

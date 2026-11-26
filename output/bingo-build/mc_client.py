@@ -7,6 +7,7 @@ login, co-op team assignment and voice group behaviour on the BINGO server.
 
 Python 3.6 compatible (runs on the ECS).
 """
+import hashlib
 import socket
 import struct
 import sys
@@ -14,6 +15,21 @@ import threading
 import time
 import uuid
 import zlib
+
+
+def offline_uuid(name):
+    """Java's UUID.nameUUIDFromBytes("OfflinePlayer:"+name) -- plain MD5.
+
+    NOT uuid3(NAMESPACE_DNS, ...): that prepends the DNS namespace bytes and
+    yields a completely different id. Verified against real logins on this
+    server (CoopOne/CoopTwo/Alice/Bob all matched). Case sensitive.
+    In offline mode the server recomputes this itself and ignores whatever
+    the client sends, but keeping it correct avoids misleading probes.
+    """
+    b = bytearray(hashlib.md5(("OfflinePlayer:" + name).encode("utf-8")).digest())
+    b[6] = (b[6] & 0x0F) | 0x30
+    b[8] = (b[8] & 0x3F) | 0x80
+    return uuid.UUID(bytes=bytes(b))
 
 
 def vi(n):
@@ -120,7 +136,7 @@ class Client(object):
     def login(self):
         hs = vi(777) + sv("127.0.0.1") + struct.pack(">H", 25565) + vi(2)
         self.send(0x00, hs)
-        uid = uuid.uuid3(uuid.NAMESPACE_DNS, "OfflinePlayer:" + self.name)
+        uid = offline_uuid(self.name)
         self.uuid = uid
         self.send(0x00, sv(self.name) + uid.bytes)
         while True:
