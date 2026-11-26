@@ -23,9 +23,33 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "..", "BINGO-26.3-HMCL-PCL2.zip")
 SERVER_IP = "47.120.61.237"
 SERVER_PORT = 25565
+PACK_VERSION = "1.1.0"
 
 # client-only performance/visual mods must NOT go to the dedicated server
 CLIENT_ONLY = {"sodium"}
+
+# SERVER-ONLY mods: Modrinth marks these client_side=unsupported. Shipping them
+# in the client pack would break the client, so they are filtered out by name.
+#   skinrestorer: server-side skin management, client_side=unsupported
+SERVER_ONLY = {"skinrestorer"}
+
+
+def client_manifest():
+    """manifest.json is the SERVER list; derive the client list from it.
+
+    v1.1.0 adds veinminer (client optional -> we ship it) and skinrestorer
+    (server only -> never shipped). Keeping one manifest plus an explicit
+    exclusion list avoids two files drifting apart.
+    """
+    manifest = json.load(open(os.path.join(HERE, "manifest.json"), encoding="utf-8-sig"))
+    kept, skipped = [], []
+    for m in manifest:
+        low = m["file"].lower()
+        if any(s in low for s in SERVER_ONLY):
+            skipped.append(m["file"])
+            continue
+        kept.append(m)
+    return kept, skipped
 
 
 def nbt_string(s):
@@ -127,7 +151,9 @@ def verify_servers_dat(d):
 
 
 def main():
-    manifest = json.load(open(os.path.join(HERE, "manifest.json"), encoding="utf-8-sig"))
+    manifest, skipped = client_manifest()
+    if skipped:
+        print("SERVER_ONLY_EXCLUDED", skipped)
     files = []
     for m in manifest:
         jar = os.path.join(HERE, "mods", m["file"])
@@ -149,9 +175,9 @@ def main():
     index = {
         "formatVersion": 1,
         "game": "minecraft",
-        "versionId": "1.0.0",
+        "versionId": PACK_VERSION,
         "name": "BINGO 26.3 (Yet Another Bingo)",
-        "summary": "轻量 BINGO 竞技/合作服客户端：Yet Another Bingo + 队伍语音 + 性能优化 + REI 配方查询，简体中文。",
+        "summary": "轻量 BINGO 合作服客户端：Yet Another Bingo + 队伍语音 + 连锁挖矿 + 联机皮肤(服务端) + 性能优化 + REI 配方查询，简体中文。",
         "files": files,
         "dependencies": {"minecraft": "26.3", "fabric-loader": "0.20.1"},
     }
@@ -174,13 +200,13 @@ def main():
         "key_key.voice_chat_group:key.keyboard.unknown\n"
     )
     readme = (
-        "BINGO 26.3 客户端整合包（HMCL / PCL2）\n"
+        "BINGO 26.3 客户端整合包 v%s（HMCL / PCL2）\n"
         "=====================================\n"
         "【导入】启动器 → 版本列表/安装整合包 → 选择本 ZIP → 等待自动安装。\n"
         "启动器会联网下载 Minecraft 26.3、Fabric Loader 0.20.1 与全部模组。\n"
         "需要 Java 25（26.3 官方要求），启动器一般会自动下载。\n"
         "\n"
-        "【网络不佳的兜底】本 ZIP 内 overrides/mods-offline/ 已附带全部 10 个模组。\n"
+        "【网络不佳的兜底】本 ZIP 内 overrides/mods-offline/ 已附带全部 %d 个模组。\n"
         "若启动器下载失败，把它们复制进该版本的 mods 文件夹即可。\n"
         "\n"
         "【服务器】已预置 47.120.61.237:25565，多人游戏列表可见。\n"
@@ -189,9 +215,17 @@ def main():
         "【语音】按 V 说话（长按），按 G 打开语音界面。\n"
         "语音走 UDP 24454，若听不到声音请检查本地防火墙/路由器是否放行 UDP。\n"
         "\n"
+        "【连锁挖矿 v1.1.0 新增】按住 Shift（潜行）再挖，会一次挖掉整片相连的同类方块。\n"
+        "支持矿石（需镐）与原木/树叶（需斧），上限 256 个，正常消耗工具耐久。\n"
+        "不按 Shift 就是普通单个挖掘，不会误伤。\n"
+        "\n"
+        "【联机皮肤 v1.1.0 新增】皮肤由服务端负责，客户端无需装任何皮肤模组。\n"
+        "进服自动按昵称取皮肤；想换用 /skin set <正版昵称> 或 /skin set <图片链接>。\n"
+        "注意：SkinRestorer 是纯服务端模组，切勿自行装进客户端。\n"
+        "\n"
         "【玩法】全员同队合作，共享一张宾果卡，横/竖/斜连成一条线即通关。\n"
         "详细说明见随附《BINGO-26.3-玩家手册.md》。\n"
-    )
+    ) % (PACK_VERSION, len(manifest))
 
     with zipfile.ZipFile(OUT, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("modrinth.index.json", json.dumps(index, ensure_ascii=False, indent=2))
@@ -223,8 +257,17 @@ def main():
             assert hashlib.sha512(data).hexdigest() == m["sha512"], m["file"]
         assert b"key.push_to_talk" in z.read("overrides/options.txt")
         verify_servers_dat(z.read("overrides/servers.dat"))
+        assert idx["versionId"] == PACK_VERSION, idx["versionId"]
+        # Hard guarantee: no server-only mod may appear anywhere in the pack.
+        allnames = [n.lower() for n in names]
+        for s in SERVER_ONLY:
+            bad = [n for n in allnames if s in n]
+            assert not bad, "server-only mod leaked into client pack: %s" % bad
+        # VeinMiner must be present on the client for the chain-mining highlight.
+        assert any("veinminer" in n for n in allnames), "veinminer missing"
     print("PACK_OK", os.path.abspath(OUT), os.path.getsize(OUT), "bytes,",
           len(files), "mod entries,", len(manifest), "offline jars verified")
+    print("VERSION", PACK_VERSION, "| server-only excluded:", skipped)
 
 
 if __name__ == "__main__":

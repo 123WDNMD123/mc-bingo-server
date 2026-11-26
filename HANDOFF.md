@@ -1,6 +1,90 @@
 # 项目交接档案
 
-## 当前状态（2026-11-25 15:20，以本节为准）
+## 当前状态（2026-11-26 13:25，以本节为准）
+
+### D-019：v1.1.0 已上线 —— 连锁挖矿 + 联机皮肤
+用户问「做联机皮肤适配了吗」→ **原先没有**，离线服默认全员史蒂夫。本次补齐并升版 v1.1.0。
+
+- **新增 2 个模组**（均 Modrinth 官方 26.3/fabric 版，本机 + ECS 远端 SHA-1/SHA-512 双重校验通过）：
+  - **VeinMiner 2.14.0**（`OhduvhIc` / 版本 `T4so6NOu`）连锁挖矿，`server=required, client=optional`
+  - **Skin Restorer 2.11.1+26.3-fabric**（`ghrZDhGW` / 版本 `uPYFkQMi`）联机皮肤，**`client_side=unsupported`**
+- 服务端现 **11 个模组**；客户端整合包 **11 个**（10 旧 + VeinMiner），**Skin Restorer 硬排除**。
+- 新 ZIP：`output/BINGO-26.3-HMCL-PCL2.zip`，**52,252,460 B**，
+  SHA-256 `394b8af50bc612f09ea8e4d46b4754082e47b197cf1b9f3cea6e94590fdddadd`。
+- 改动前已冷备：`/opt/backups/bingo-20261126-130524.tar.gz`（209,984,943 B）。
+- **每日备份定时器已实证自动执行**（不再是「只 enable」）：`bingo-20261126-043015.tar.gz` 由 04:30 自动产出。
+
+### 端侧差异是本次最关键的判断
+**Skin Restorer 是纯服务端模组**（Modrinth `client_side=unsupported`），装进客户端会出问题。
+`build_client_pack.py` 新增 `SERVER_ONLY={"skinrestorer"}` + `client_manifest()` 过滤，
+并在回环校验里加**硬断言**：包内任何路径出现 `skinrestorer` 即构建失败。
+同时断言 `veinminer` 必须在包内。VeinMiner **不注册按键**（字节码里零 `key.*`），靠 `mustSneak` 触发，
+所以没有写任何不存在的键位（避免重犯昨天语音按键 ID 的错）。
+
+### 连锁挖矿配置（按 BINGO 场景定制，非默认）
+`/opt/bingo/config/Veinminer/`：`mustSneak=true`（防误伤）、`maxChain=256`、`searchRadius=2`、
+`cooldown=10`、`needCorrectTool=true`、`decreaseDurability=true`、`mergeItemDrops=true`、**`autoUpdate=false`**。
+分组从默认只有 `Ores` 扩到 **`Ores`(#c:ores,镐) / `Logs`(#minecraft:logs,斧) / `Leaves`(#minecraft:leaves,斧或锄)**
+—— BINGO 卡经常要大量木材，只连锁矿石等于一半卡片用不上。
+**标签可解析已实证**：`execute if block … #c:ores` 与 `#minecraft:logs` 均返回 `Test passed`。
+
+### 皮肤已实证取到真实材质
+`/opt/bingo/world/skinrestorer/1b435776-….json` 已生成，base64 解码后含
+`profileName=nashville`、真实 URL `textures.minecraft.net/texture/90e75cd4…` 与 Mojang 签名。
+配置：`language=zh_cn`、`autoFetch.providers=["mojang","ely_by"]`（离线昵称多半查不到正版，加 ely.by 兜底）、
+`/skin` 命令 `permissionLevel=0` 全员可用。
+**注意**：昵称若与正版账号同名，会显示那个正版账号的皮肤（与 D-018 的 OP 坑同源）。
+
+### 顺手修掉一个真实缺陷：死亡仍掉物品
+`isKeepInventory=true` 写在 BINGO JSON 里**不管用**，世界 gamerule 才管事。
+而且 26.3 的规则名是 **`keep_inventory`（带下划线）**，不是 `keepInventory`
+—— 昨天记「该规则不存在」其实是名字找错了。实测原值为 **false**，已 `gamerule keep_inventory true` 并重启验证保持。
+
+### 本轮新踩的坑
+1. **`/bingo lobby confirm` 会自行关服**：我探测命令时误触发，服务变 inactive 但**退出码 0、世界完整保存**，
+   不是崩溃。别把 BINGO 的重置流程当故障排查。
+2. **命令包 ID 终于定位**（昨天遗留问题）：play serverbound
+   **`0x06`=chat_ack、`0x07`=chat_command（载荷仅一个字符串）、`0x08`=chat_command_signed、`0x09`=chat**。
+   昨天枚举全失败的真因是**载荷格式错**（把聊天格式的时间戳/盐塞给了命令包），不是 ID 错。
+3. **但「包没报错」≠「命令执行了」**：`0x07` 探针虽 SURVIVED，服务端 `log_admin_commands` 本已为 true
+   却无命令日志，`data get block` 也显示区块未加载 —— 说明命令实际未生效。
+   **最终改用 RCON 取证**（`Successfully filled 10 block(s)`、`Test passed`）。教训：存活性不能当功能证据。
+4. 云助手内嵌 Python 的嵌套引号会被 shell 吞掉 → **base64 传脚本**（本轮再次印证）。
+
+### 遗留给真人验证的点
+服务端已备好测试目标：**煤矿柱 `300,70~74,300` 与 `301,70~74,300`；原木柱 `300,76~78,300`**（已移除 forceload）。
+需真人确认：按住 Shift 砍/挖是否整片掉落、皮肤在客户端渲染效果。
+
+---
+
+## 历史状态（2026-11-26 12:55 快照）
+
+### D-018：服主账号 Nashville 已创建并实证权限生效
+- `ops.json`：`{"uuid":"1b435776-e2b0-3458-b89b-20b7a222a4f8","name":"Nashville","level":4,"bypassesPlayerLimit":false}`
+- **权限已实证**：登录会话中服务端下发 Entity Event（包 `0x22`，5 字节载荷）**eventId=28 → 等级 4**；
+  对照非 OP 玩家收到 eventId=24 → 等级 0。不是"文件里写着"，是会话内真实生效。
+- 玩家存档已生成：`world/players/data/1b435776-….dat`（+ stats / advancements）。
+- 登录方式不变：**离线登录，昵称填 `Nashville`（大小写必须一致）**，无需密码。
+
+### 离线服 OP 的头号陷阱（务必按此顺序，否则静默失效）
+1. **先让该昵称离线登录一次**，使其进入 `usercache.json`；**再执行 `op <昵称>`**。
+   若名字从未登录过，`op` 会去查 **Mojang 正版档案**。`nashville` 恰是真实正版账号，
+   于是服务端写入小写名 + 随机 UUID `5b8d408b-…`（version nibble=4），与离线 UUID 完全不同，**OP 不生效且无报错**。
+2. **离线 UUID = `UUID.nameUUIDFromBytes("OfflinePlayer:"+name)`，纯 MD5**（置 version=3 / variant）。
+   **不是 `uuid3(NAMESPACE_DNS, …)`** —— 后者拼 DNS namespace，结果完全不同（此前记录有误，已纠正）。
+   已用真实登录数据 CoopOne / CoopTwo / Alice / Bob **4/4 校验通过**。**大小写敏感**。
+   `mc_client.py` 已抽出 `offline_uuid()` 并修正。
+3. 校验权限别只看 `ops.json`，用 **Entity Event `0x22`，eventId = 24 + level** 取证（见 `op_level_probe.py`）。
+
+### 26.3 其它新增事实
+- play serverbound **`0x05` 是 change_game_mode，不是聊天/命令**；枚举 0x04/06/07/08/09/0a/0b 发聊天载荷全部 DecoderException，
+  正确命令包 ID 仍未定位（本次验收改走 Entity Event，不依赖它）。
+- 玩家数据目录是 **`world/players/data/`**，不再是原版 `world/playerdata/`。
+- 探针坑：`Reader.d` 含包 ID varint，判载荷长度须用 `r.rest()`；云助手内嵌 Python 的嵌套引号会被 shell 吞掉，**用 base64 传脚本**。
+
+---
+
+## 历史状态（2026-11-25 15:20 快照）
 
 ### D-016：BINGO 26.3 服已部署并通过协议级验收
 - **服务在跑**：`bingo.service`（`/opt/bingo`，已 enable 开机自启），`Done (4.328s)`；`-Xms2G -Xmx4G -XX:+UseZGC`。
@@ -36,6 +120,26 @@
 - 客户端：`output/BINGO-26.3-HMCL-PCL2.zip`（51,547,569 B，10 条索引 + `overrides/mods-offline/` 10 个已校验 jar 兜底）
 - 手册：`output/BINGO-26.3-玩家手册.md`
 - 构建/运维脚本：`output/bingo-build/`（`aliyun_api.py`、`oss_relay.py`、`relay_mods.py`、`apply_defaults.py`、`build_client_pack.py` 等）
+
+### D-017：已开源发布到 GitHub（公开仓库 + Release）
+- **仓库**：https://github.com/123WDNMD123/mc-bingo-server （PUBLIC，默认分支 `main`，commit `2c5e8df`，48 文件 ≈ 256KB）
+- **Release**：https://github.com/123WDNMD123/mc-bingo-server/releases/tag/v1.0.0
+  附件 `BINGO-26.3-HMCL-PCL2.zip`，`size=51547569`、`state=uploaded`，GitHub 服务端 digest 与本地 SHA-256 逐字符一致。
+- **发布树是脱敏副本**，位于 `output/github-publish/`，由 `prepare_github.py` 生成；**原项目文件保持真实凭据不变**，本地运维照旧。
+  排除：`server-backups/`（1.1GB 私有冷备）、`mods/`（52MB jar）、`.workbuddy-ai/`、缓存、`prepare_github.py` 自身（含密钥字面量）。
+  改写：`ssh_exec.py` 的 SSH 口令改为读 `MC_SSH_PASSWORD` 环境变量，缺失即报错退出。**他人克隆后必须先 `export MC_SSH_PASSWORD=...`**。
+- **发布通道坑**：GitHub MCP 连接器是 GitHub App，`create_repository` 返回 `403 Resource not accessible by integration`；
+  改用 **gh CLI**（设备码授权易超时，最终用 PAT `--with-token` 存入 keyring）。git push 需配 `credential.helper = gh auth git-credential`。
+  gh.exe 解压在 `C:/Users/64146/AppData/Local/Temp/ghcli/bin/gh.exe`（**不在 PATH，用绝对路径**；Temp 目录可能被清理，需重下）。
+- **安全复核方式**：不扫本地，而是 `gh api .../tarball/main` 拉**远端快照**再扫 8 类凭据正则。
+  SSH 口令 / 阿里云 AK / GitHub token 三类字面量 **零命中**。12 处 `hardcoded_pwd`/`rcon_literal` 命中经逐条核实**全是误报**——
+  匹配到的是 `line.startswith("rcon.password=")`、`grep '^rcon.password='` 这类**读取键名**的代码，正则跨过引号边界误抓后续字符。
+  **经验：密钥扫描命中必须逐条看原始代码行，不能只看命中数。**
+- **下载回环已实测**：从 Release URL 真实下载，本机跨境带宽仅 ~111KB/s，首次 440s 后 curl exit 56 中断（48.9MB）；
+  `curl -C -` 续传（HTTP 206）补齐 → SHA-256 一致、`testzip None`、14 条目 / 10 索引 / 10 离线 jar / `servers.dat` 齐备。
+  **提示玩家：国内直连 GitHub Release 可能慢或断，建议用下载工具或镜像加速。**
+- LICENSE 为 MIT + 第三方模组免责段落，因非标准模板 GitHub 未自动识别 SPDX（`licenseInfo: null`），不影响授权效力。
+- **待用户处理**：本次使用的 PAT 曾明文出现在对话中，**建议在 GitHub Settings → Developer settings 撤销并重新生成**。
 
 ---
 
